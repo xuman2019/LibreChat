@@ -7,7 +7,13 @@ import {
   isImageVisionTool,
 } from 'librechat-data-provider';
 import { memo } from 'react';
-import type { TMessageContentParts, TAttachment } from 'librechat-data-provider';
+import type {
+  TMessageContentParts,
+  TAttachment,
+  FunctionToolCall,
+  CodeToolCall,
+  Agents,
+} from 'librechat-data-provider';
 import { OpenAIImageGen, EmptyText, Reasoning, ExecuteCode, AgentUpdate, Text } from './Parts';
 import { ErrorMessage } from './MessageContent';
 import RetrievalCall from './RetrievalCall';
@@ -47,7 +53,9 @@ const Part = memo(
           className="my-2"
         />
       );
-    } else if (part.type === ContentTypes.AGENT_UPDATE) {
+    }
+
+    if (part.type === ContentTypes.AGENT_UPDATE) {
       return (
         <>
           <AgentUpdate currentAgentId={part[ContentTypes.AGENT_UPDATE]?.agentId} />
@@ -58,18 +66,17 @@ const Part = memo(
           )}
         </>
       );
-    } else if (part.type === ContentTypes.TEXT) {
-      const text = typeof part.text === 'string' ? part.text : part.text?.value;
+    }
 
+    if (part.type === ContentTypes.TEXT) {
+      const text = typeof part.text === 'string' ? part.text : part.text?.value;
       if (typeof text !== 'string') {
         return null;
       }
       if (part.tool_call_ids != null && !text) {
         return null;
       }
-      /** Handle whitespace-only text to avoid layout shift */
       if (text.length > 0 && /^\s*$/.test(text)) {
-        /** Show placeholder for whitespace-only last part during streaming */
         if (isLast && showCursor) {
           return (
             <Container>
@@ -77,7 +84,6 @@ const Part = memo(
             </Container>
           );
         }
-        /** Skip rendering non-last whitespace-only parts to avoid empty Container */
         if (!isLast) {
           return null;
         }
@@ -87,134 +93,129 @@ const Part = memo(
           <Text text={text} isCreatedByUser={isCreatedByUser} showCursor={showCursor} />
         </Container>
       );
-    } else if (part.type === ContentTypes.THINK) {
+    }
+
+    if (part.type === ContentTypes.THINK) {
       const reasoning = typeof part.think === 'string' ? part.think : part.think?.value;
       if (typeof reasoning !== 'string') {
         return null;
       }
       return <Reasoning reasoning={reasoning} isLast={isLast ?? false} />;
-    } else if (part.type === ContentTypes.TOOL_CALL) {
-      const toolCall = part[ContentTypes.TOOL_CALL];
+    }
 
+    if (part.type === ContentTypes.TOOL_CALL) {
+      const toolCall = part[ContentTypes.TOOL_CALL];
       if (!toolCall) {
         return null;
       }
 
+      const progress = toolCall.progress ?? 0.1;
       const isToolCall =
         'args' in toolCall && (!toolCall.type || toolCall.type === ToolCallTypes.TOOL_CALL);
-      if (
-        isToolCall &&
-        (toolCall.name === Tools.execute_code ||
-          toolCall.name === Constants.PROGRAMMATIC_TOOL_CALLING)
-      ) {
-        return (
-          <ExecuteCode
-            attachments={attachments}
-            isSubmitting={isSubmitting}
-            output={toolCall.output ?? ''}
-            initialProgress={toolCall.progress ?? 0.1}
-            args={typeof toolCall.args === 'string' ? toolCall.args : ''}
-          />
-        );
-      } else if (
-        isToolCall &&
-        (toolCall.name === 'image_gen_oai' ||
-          toolCall.name === 'image_edit_oai' ||
-          toolCall.name === 'gemini_image_gen')
-      ) {
-        return (
-          <OpenAIImageGen
-            initialProgress={toolCall.progress ?? 0.1}
-            isSubmitting={isSubmitting}
-            toolName={toolCall.name}
-            args={typeof toolCall.args === 'string' ? toolCall.args : ''}
-            output={toolCall.output ?? ''}
-            attachments={attachments}
-          />
-        );
-      } else if (isToolCall && toolCall.name === Tools.web_search) {
-        return (
-          <WebSearch
-            output={toolCall.output ?? ''}
-            initialProgress={toolCall.progress ?? 0.1}
-            isSubmitting={isSubmitting}
-            attachments={attachments}
-            isLast={isLast}
-          />
-        );
-      } else if (isToolCall && toolCall.name?.startsWith(Constants.LC_TRANSFER_TO_)) {
-        return (
-          <AgentHandoff
-            args={toolCall.args ?? ''}
-            name={toolCall.name || ''}
-            output={toolCall.output ?? ''}
-          />
-        );
-      } else if (isToolCall) {
+
+      if (isToolCall) {
+        const tc = toolCall as Agents.ToolCall & { progress?: number };
+        const name = tc.name ?? '';
+
+        if (name === Tools.execute_code || name === Constants.PROGRAMMATIC_TOOL_CALLING) {
+          return (
+            <ExecuteCode
+              attachments={attachments}
+              isSubmitting={isSubmitting}
+              output={tc.output ?? ''}
+              initialProgress={progress}
+              args={typeof tc.args === 'string' ? tc.args : ''}
+            />
+          );
+        }
+        if (name === 'image_gen_oai' || name === 'image_edit_oai' || name === 'gemini_image_gen') {
+          return (
+            <OpenAIImageGen
+              initialProgress={progress}
+              isSubmitting={isSubmitting}
+              toolName={name}
+              args={typeof tc.args === 'string' ? tc.args : ''}
+              output={tc.output ?? ''}
+              attachments={attachments}
+            />
+          );
+        }
+        if (name === Tools.web_search) {
+          return (
+            <WebSearch
+              output={tc.output ?? ''}
+              initialProgress={progress}
+              isSubmitting={isSubmitting}
+              attachments={attachments}
+              isLast={isLast}
+            />
+          );
+        }
+        if (name.startsWith(Constants.LC_TRANSFER_TO_)) {
+          return <AgentHandoff args={tc.args ?? ''} name={name} output={tc.output ?? ''} />;
+        }
         return (
           <ToolCall
-            args={toolCall.args ?? ''}
-            name={toolCall.name || ''}
-            output={toolCall.output ?? ''}
-            initialProgress={toolCall.progress ?? 0.1}
+            args={tc.args ?? ''}
+            name={name}
+            output={tc.output ?? ''}
+            initialProgress={progress}
             isSubmitting={isSubmitting}
             attachments={attachments}
-            auth={toolCall.auth}
-            expires_at={toolCall.expires_at}
+            auth={tc.auth}
+            expires_at={tc.expires_at}
             isLast={isLast}
           />
         );
-      } else if (toolCall.type === ToolCallTypes.CODE_INTERPRETER) {
-        const code_interpreter = toolCall[ToolCallTypes.CODE_INTERPRETER];
+      }
+
+      if (toolCall.type === ToolCallTypes.CODE_INTERPRETER) {
+        const ci = toolCall as CodeToolCall & { progress?: number };
         return (
           <CodeAnalyze
-            initialProgress={toolCall.progress ?? 0.1}
-            code={code_interpreter.input}
-            outputs={code_interpreter.outputs ?? []}
+            initialProgress={progress}
+            code={ci.code_interpreter.input}
+            outputs={ci.code_interpreter.outputs ?? []}
           />
         );
-      } else if (
+      }
+
+      if (
         toolCall.type === ToolCallTypes.RETRIEVAL ||
         toolCall.type === ToolCallTypes.FILE_SEARCH
       ) {
-        return (
-          <RetrievalCall initialProgress={toolCall.progress ?? 0.1} isSubmitting={isSubmitting} />
-        );
-      } else if (
-        toolCall.type === ToolCallTypes.FUNCTION &&
-        ToolCallTypes.FUNCTION in toolCall &&
-        imageGenTools.has(toolCall.function.name)
-      ) {
-        return (
-          <ImageGen
-            initialProgress={toolCall.progress ?? 0.1}
-            args={toolCall.function.arguments as string}
-          />
-        );
-      } else if (toolCall.type === ToolCallTypes.FUNCTION && ToolCallTypes.FUNCTION in toolCall) {
+        return <RetrievalCall initialProgress={progress} isSubmitting={isSubmitting} />;
+      }
+
+      if (toolCall.type === ToolCallTypes.FUNCTION && ToolCallTypes.FUNCTION in toolCall) {
+        const fn = (toolCall as FunctionToolCall).function;
+        if (imageGenTools.has(fn.name)) {
+          return <ImageGen initialProgress={progress} args={fn.arguments as string} />;
+        }
         if (isImageVisionTool(toolCall)) {
           if (isSubmitting && showCursor) {
             return (
               <Container>
-                <Text text={''} isCreatedByUser={isCreatedByUser} showCursor={showCursor} />
+                <Text text="" isCreatedByUser={isCreatedByUser} showCursor={showCursor} />
               </Container>
             );
           }
           return null;
         }
-
         return (
           <ToolCall
-            initialProgress={toolCall.progress ?? 0.1}
+            initialProgress={progress}
             isSubmitting={isSubmitting}
-            args={toolCall.function.arguments as string}
-            name={toolCall.function.name}
-            output={toolCall.function.output}
+            args={fn.arguments as string}
+            name={fn.name}
+            output={fn.output}
             isLast={isLast}
           />
         );
       }
-    } else if (part.type === ContentTypes.IMAGE_FILE) {
+    }
+
+    if (part.type === ContentTypes.IMAGE_FILE) {
       const imageFile = part[ContentTypes.IMAGE_FILE];
       const height = imageFile.height ?? 1920;
       const width = imageFile.width ?? 1080;
