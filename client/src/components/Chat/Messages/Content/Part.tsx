@@ -201,6 +201,7 @@ const Part = memo(
               args={fn.arguments as string}
               isSubmitting={isSubmitting}
               toolName={fn.name}
+              output={fn.output ?? ''}
             />
           );
         }
