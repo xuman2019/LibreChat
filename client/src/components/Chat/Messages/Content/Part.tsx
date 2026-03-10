@@ -183,7 +183,13 @@ const Part = memo(
         toolCall.type === ToolCallTypes.RETRIEVAL ||
         toolCall.type === ToolCallTypes.FILE_SEARCH
       ) {
-        return <RetrievalCall initialProgress={progress} isSubmitting={isSubmitting} />;
+        return (
+          <RetrievalCall
+            initialProgress={progress}
+            isSubmitting={isSubmitting}
+            output={(toolCall as { output?: string }).output}
+          />
+        );
       }
 
       if (toolCall.type === ToolCallTypes.FUNCTION && ToolCallTypes.FUNCTION in toolCall) {
