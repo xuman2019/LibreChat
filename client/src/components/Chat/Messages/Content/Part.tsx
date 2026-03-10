@@ -14,7 +14,7 @@ import type {
   CodeToolCall,
   Agents,
 } from 'librechat-data-provider';
-import { OpenAIImageGen, EmptyText, Reasoning, ExecuteCode, AgentUpdate, Text } from './Parts';
+import { ImageGen, EmptyText, Reasoning, ExecuteCode, AgentUpdate, Text } from './Parts';
 import { ErrorMessage } from './MessageContent';
 import RetrievalCall from './RetrievalCall';
 import AgentHandoff from './AgentHandoff';
@@ -22,7 +22,6 @@ import CodeAnalyze from './CodeAnalyze';
 import Container from './Container';
 import WebSearch from './WebSearch';
 import ToolCall from './ToolCall';
-import ImageGen from './ImageGen';
 import Image from './Image';
 
 type PartProps = {
@@ -130,7 +129,7 @@ const Part = memo(
         }
         if (name === 'image_gen_oai' || name === 'image_edit_oai' || name === 'gemini_image_gen') {
           return (
-            <OpenAIImageGen
+            <ImageGen
               initialProgress={progress}
               isSubmitting={isSubmitting}
               toolName={name}
@@ -190,7 +189,14 @@ const Part = memo(
       if (toolCall.type === ToolCallTypes.FUNCTION && ToolCallTypes.FUNCTION in toolCall) {
         const fn = (toolCall as FunctionToolCall).function;
         if (imageGenTools.has(fn.name)) {
-          return <ImageGen initialProgress={progress} args={fn.arguments as string} />;
+          return (
+            <ImageGen
+              initialProgress={progress}
+              args={fn.arguments as string}
+              isSubmitting={isSubmitting}
+              toolName={fn.name}
+            />
+          );
         }
         if (isImageVisionTool(toolCall)) {
           if (isSubmitting && showCursor) {

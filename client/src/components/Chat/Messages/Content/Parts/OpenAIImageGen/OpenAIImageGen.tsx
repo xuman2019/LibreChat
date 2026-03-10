@@ -2,8 +2,12 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { PixelCard } from '@librechat/client';
 import type { TAttachment, TFile, TAttachmentMetadata } from 'librechat-data-provider';
 import Image from '~/components/Chat/Messages/Content/Image';
+import { ToolIcon, isError } from '../../ToolOutput';
+import { useProgress } from '~/hooks';
 import ProgressText from './ProgressText';
 import { scaleImage } from '~/utils';
+
+const AGENT_STYLE_TOOLS = new Set(['image_gen_oai', 'image_edit_oai', 'gemini_image_gen']);
 
 export default function OpenAIImageGen({
   initialProgress = 0.1,
@@ -14,30 +18,35 @@ export default function OpenAIImageGen({
   attachments,
 }: {
   initialProgress: number;
-  isSubmitting: boolean;
-  toolName: string;
+  isSubmitting?: boolean;
+  toolName?: string;
   args: string | Record<string, unknown>;
   output?: string | null;
   attachments?: TAttachment[];
 }) {
-  const [progress, setProgress] = useState(initialProgress);
+  const isAgentStyle = toolName != null && AGENT_STYLE_TOOLS.has(toolName);
+  const [agentProgress, setAgentProgress] = useState(initialProgress);
+  const legacyProgress = useProgress(isAgentStyle ? 1 : initialProgress);
+  const progress = isAgentStyle ? agentProgress : legacyProgress;
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
-  const error =
-    typeof output === 'string' && output.toLowerCase().includes('error processing tool');
+  const hasError = typeof output === 'string' && isError(output);
 
-  const cancelled = (!isSubmitting && initialProgress < 1) || error === true;
+  const cancelled =
+    isSubmitting !== undefined
+      ? (!isSubmitting && initialProgress < 1) || hasError
+      : initialProgress < 1 && initialProgress > 0
+        ? false
+        : hasError;
 
   let width: number | undefined;
   let height: number | undefined;
   let quality: 'low' | 'medium' | 'high' = 'high';
 
-  // Parse args if it's a string
-  let parsedArgs;
+  let parsedArgs: Record<string, unknown> = {};
   try {
     parsedArgs = typeof _args === 'string' ? JSON.parse(_args) : _args;
-  } catch (error) {
-    console.error('Error parsing args:', error);
+  } catch {
     parsedArgs = {};
   }
 
@@ -61,12 +70,11 @@ export default function OpenAIImageGen({
         quality = q;
       }
     }
-  } catch (e) {
+  } catch {
     width = undefined;
     height = undefined;
   }
 
-  // Default to 1024x1024 if width and height are still undefined after parsing args and attachment metadata
   const attachment = attachments?.[0];
   const {
     width: imageWidth,
@@ -98,8 +106,12 @@ export default function OpenAIImageGen({
   }, [origWidth, origHeight]);
 
   useEffect(() => {
+    if (!isAgentStyle) {
+      return;
+    }
+
     if (isSubmitting) {
-      setProgress(initialProgress);
+      setAgentProgress(initialProgress);
 
       if (intervalRef.current) {
         clearInterval(intervalRef.current);
@@ -111,7 +123,6 @@ export default function OpenAIImageGen({
       } else if (quality === 'high') {
         baseDuration = 50000;
       }
-      // adding some jitter (±30% of base)
       const jitter = Math.floor(baseDuration * 0.3);
       const totalDuration = Math.floor(Math.random() * jitter) + baseDuration;
       const updateInterval = 200;
@@ -123,7 +134,7 @@ export default function OpenAIImageGen({
 
         if (currentStep >= totalSteps) {
           clearInterval(intervalRef.current as NodeJS.Timeout);
-          setProgress(0.9);
+          setAgentProgress(0.9);
         } else {
           const progressRatio = currentStep / totalSteps;
           let mapRatio: number;
@@ -135,7 +146,7 @@ export default function OpenAIImageGen({
           }
           const scaledProgress = 0.1 + mapRatio * 0.8;
 
-          setProgress(scaledProgress);
+          setAgentProgress(scaledProgress);
         }
       }, updateInterval);
     }
@@ -145,16 +156,20 @@ export default function OpenAIImageGen({
         clearInterval(intervalRef.current);
       }
     };
-  }, [isSubmitting, initialProgress, quality]);
+  }, [isSubmitting, initialProgress, quality, isAgentStyle]);
 
   useEffect(() => {
+    if (!isAgentStyle) {
+      return;
+    }
+
     if (initialProgress >= 1 || cancelled) {
-      setProgress(initialProgress);
+      setAgentProgress(initialProgress);
       if (intervalRef.current) {
         clearInterval(intervalRef.current);
       }
     }
-  }, [initialProgress, cancelled]);
+  }, [initialProgress, cancelled, isAgentStyle]);
 
   useEffect(() => {
     updateDimensions();
@@ -172,32 +187,37 @@ export default function OpenAIImageGen({
     };
   }, [updateDimensions]);
 
+  const isInProgress = progress < 1 && !cancelled;
+
   return (
     <>
-      <div className="relative my-2.5 flex size-5 shrink-0 items-center gap-2.5">
+      <div className="relative my-2.5 flex h-5 shrink-0 items-center gap-2.5">
+        <ToolIcon type="image_gen" isAnimating={isInProgress} />
         <ProgressText progress={progress} error={cancelled} toolName={toolName} />
       </div>
-      <div className="relative mb-2 flex w-full justify-start">
-        <div ref={containerRef} className="w-full max-w-lg">
-          {dimensions.width !== 'auto' && progress < 1 && (
-            <PixelCard
-              variant="default"
-              progress={progress}
-              randomness={0.6}
-              width={dimensions.width}
-              height={dimensions.height}
+      {isAgentStyle && (
+        <div className="relative mb-2 flex w-full justify-start">
+          <div ref={containerRef} className="w-full max-w-lg">
+            {dimensions.width !== 'auto' && progress < 1 && (
+              <PixelCard
+                variant="default"
+                progress={progress}
+                randomness={0.6}
+                width={dimensions.width}
+                height={dimensions.height}
+              />
+            )}
+            <Image
+              altText={filename}
+              imagePath={filepath ?? ''}
+              width={Number(dimensions.width?.split('px')[0])}
+              height={Number(dimensions.height?.split('px')[0])}
+              placeholderDimensions={{ width: dimensions.width, height: dimensions.height }}
+              args={parsedArgs}
             />
-          )}
-          <Image
-            altText={filename}
-            imagePath={filepath ?? ''}
-            width={Number(dimensions.width?.split('px')[0])}
-            height={Number(dimensions.height?.split('px')[0])}
-            placeholderDimensions={{ width: dimensions.width, height: dimensions.height }}
-            args={parsedArgs}
-          />
+          </div>
         </div>
-      </div>
+      )}
     </>
   );
 }
