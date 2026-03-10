@@ -1,12 +1,8 @@
 import React, { memo, useEffect, useRef, useState } from 'react';
-import copy from 'copy-to-clipboard';
 import rehypeKatex from 'rehype-katex';
 import ReactMarkdown from 'react-markdown';
-import { Button } from '@librechat/client';
 import rehypeHighlight from 'rehype-highlight';
-import { Copy, CircleCheckBig } from 'lucide-react';
 import { handleDoubleClick, langSubset } from '~/utils';
-import { useLocalize } from '~/hooks';
 
 type TCodeProps = {
   inline: boolean;
@@ -96,29 +92,3 @@ export const CodeMarkdown = memo(
     );
   },
 );
-
-export const CopyCodeButton: React.FC<{ content: string }> = ({ content }) => {
-  const localize = useLocalize();
-  const [isCopied, setIsCopied] = useState(false);
-
-  const handleCopy = () => {
-    copy(content, { format: 'text/plain' });
-    setIsCopied(true);
-    setTimeout(() => setIsCopied(false), 3000);
-  };
-
-  return (
-    <Button
-      size="icon"
-      variant="ghost"
-      onClick={handleCopy}
-      aria-label={isCopied ? localize('com_ui_copied') : localize('com_ui_copy_code')}
-    >
-      {isCopied ? (
-        <CircleCheckBig size={16} aria-hidden="true" />
-      ) : (
-        <Copy size={16} aria-hidden="true" />
-      )}
-    </Button>
-  );
-};
