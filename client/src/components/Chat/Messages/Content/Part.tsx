@@ -123,7 +123,7 @@ const Part = memo(
               isSubmitting={isSubmitting}
               output={tc.output ?? ''}
               initialProgress={progress}
-              args={typeof tc.args === 'string' ? tc.args : ''}
+              args={tc.args}
             />
           );
         }
