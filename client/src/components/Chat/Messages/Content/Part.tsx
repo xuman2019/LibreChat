@@ -150,6 +150,16 @@ const Part = memo(
             />
           );
         }
+        if (name === 'file_search' || name === 'retrieval') {
+          return (
+            <RetrievalCall
+              initialProgress={progress}
+              isSubmitting={isSubmitting}
+              output={tc.output ?? undefined}
+              attachments={attachments}
+            />
+          );
+        }
         if (name.startsWith(Constants.LC_TRANSFER_TO_)) {
           return <AgentHandoff args={tc.args ?? ''} name={name} output={tc.output ?? ''} />;
         }
@@ -188,6 +198,7 @@ const Part = memo(
             initialProgress={progress}
             isSubmitting={isSubmitting}
             output={(toolCall as { output?: string }).output}
+            attachments={attachments}
           />
         );
       }
